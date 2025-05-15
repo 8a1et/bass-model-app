@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Модель диффузии Басса с агентной визуализацией</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f7fa;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .controls {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .control-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: inline-block;
+      width: 240px;
+    }
+    input[type="range"], input[type="number"] {
+      width: 200px;
+    }
+    .value-display {
+      display: inline-block;
+      width: 60px;
+      text-align: right;
+      margin-left: 10px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    canvas {
+      background: white;
+      border-radius: 10px;
+    }
+    #animation-container {
+      height: 400px;
+      background: white;
+      border-radius: 10px;
+      position: relative;
+    }
+    .legend {
+      position: absolute;
+      bottom: 15px;
+      left: 15px;
+      background: rgba(255,255,255,0.9);
+      border-radius: 5px;
+      padding: 5px 10px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+      font-size: 14px;
+      display: flex;
+      gap: 15px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .legend-color {
+      width: 15px;
+      height: 15px;
+      border-radius: 3px;
+    }
+    .legend-green { background-color: #2ecc71; }
+    .legend-blue { background-color: #3498db; }
+    .legend-red { background-color: #e74c3c; }
+    .restart-btn {
+      display: block;
+      margin: 10px auto;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<h1>Интерактивная модель диффузии Басса</h1>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Коэффициент инновации (p):</label>
+    <input type="range" id="p" min="0" max="0.1" step="0.001" value="0.03" />
+    <span class="value-display" id="pValue">0.03</span>
+  </div>
+  <div class="control-group">
+    <label>Коэффициент имитации (q):</label>
+    <input type="range" id="q" min="0" max="1" step="0.01" value="0.38" />
+    <span class="value-display" id="qValue">0.38</span>
+  </div>
+  <div class="control-group">
+    <label>Объем рынка (m = количество агентов):</label>
+    <input type="number" id="m" min="1000" step="1000" value="1000" />
+  </div>
+  <div class="control-group">
+    <label>Количество периодов (n):</label>
+    <input type="range" id="n" min="1" max="30" step="1" value="10" />
+    <span class="value-display" id="nValue">10</span>
+  </div>
+  <div class="control-group">
+    <label>Скорость анимации:</label>
+    <input type="range" id="speed" min="0.1" max="5" step="0.1" value="1" />
+    <span class="value-display" id="speedValue">1x</span>
+  </div>
+  <div class="control-group">
+    <label>Метод вычисления модели:</label>
+    <button onclick="setMethod('analytical')">Аналитический</button>
+    <button onclick="setMethod('euler')">Эйлера</button>
+    <button onclick="setMethod('heun')">Хойна</button>
+  </div>
+  <div style="margin: 10px 0; font-weight: bold;">
+    Текущий метод: <span id="currentMethod">Аналитический</span>
+  </div>
+  <button class="restart-btn" onclick="updateChart()">Перезапустить анимацию</button>
+</div>
+
+<div class="grid">
+  <div>
+    <canvas id="bassChart"></canvas>
+  </div>
+  <div id="animation-container">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-color legend-green"></div>Принявшие инновацию (Агенты)</div>
+      <div class="legend-item"><div class="legend-color legend-blue"></div>Не принявшие инновацию (Потенциальные)</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let bassChart = null;
+let agents = [];
+let simulation = null;
+let animationSpeed = 1;
+let currentMethod = 'analytical';
+const canvasSize = 400;
+
+function setMethod(method) {
+  currentMethod = method;
+  document.getElementById('currentMethod').textContent =
+    method === 'euler' ? 'Метод Эйлера' :
+    method === 'heun' ? 'Метод Хойна' : 'Аналитический';
+  updateChart();
+}
+
+function setup() {
+  const canvas = createCanvas(canvasSize, canvasSize);
+  canvas.parent('animation-container');
+  frameRate(30);
+}
+
+function draw() {
+  background(255);
+  agents.forEach(agent => {
+    fill(agent.adopted ? '#2ecc71' : '#3498db');
+    noStroke();
+    ellipse(agent.x, agent.y, 8, 8);
+  });
+}
+
+class AgentSimulation {
+  constructor(agentCount) {
+    this.agentCount = agentCount;
+    this.m = agentCount;
+    this.adoptedCountOverTime = [];
+    this.initAgents();
+  }
+  initAgents() {
+    this.agents = Array(this.agentCount).fill().map(() => ({
+      x: Math.random() * canvasSize,
+      y: Math.random() * canvasSize,
+      adopted: false
+    }));
+    this.adoptedCountOverTime = [];
+  }
+  update(p, q, currentAdopters) {
+    const adoptionProb = p + q * (currentAdopters / this.m);
+    let count = 0;
+    this.agents.forEach(agent => {
+      if (!agent.adopted && Math.random() < adoptionProb) {
+        agent.adopted = true;
+      }
+      if (agent.adopted) count++;
+    });
+    agents = this.agents;
+    this.adoptedCountOverTime.push(count);
+  }
+  get potentialCountOverTime() {
+    return this.adoptedCountOverTime.map(adopted => this.m - adopted);
+  }
+}
+
+function calculateBassExact(p, q, m, periods) {
+  const adopters = [], potential = [];
+  for (let t = 0; t <= periods; t++) {
+    const exp = Math.exp(-(p + q) * t);
+    const N = m * (1 - exp) / (1 + (q / p) * exp);
+    adopters.push(N);
+    potential.push(m - N);
+  }
+  return {
+    adopters,
+    potential,
+    labels: Array.from({ length: periods + 1 }, (_, i) => i)
+  };
+}
+
+function calculateBassEuler(p, q, m, periods) {
+  const adopters = [];
+  let N = 1;
+  const dt = 1;
+  for (let t = 0; t <= periods; t++) {
+    adopters.push(N);
+    const dN = (p + q * N / m) * (m - N);
+    N += dt * dN;
+    N = Math.min(N, m);
+  }
+  return {
+    adopters,
+    potential: adopters.map(n => m - n),
+    labels: Array.from({ length: periods + 1 }, (_, i) => i)
+  };
+}
+
+function calculateBassHeun(p, q, m, periods) {
+  const adopters = [];
+  let N = 1;
+  const dt = 1;
+  for (let t = 0; t <= periods; t++) {
+    adopters.push(N);
+    const f1 = (p + q * N / m) * (m - N);
+    const N_pred = N + dt * f1;
+    const f2 = (p + q * N_pred / m) * (m - N_pred);
+    N += 0.5 * dt * (f1 + f2);
+    N = Math.min(N, m);
+  }
+  return {
+    adopters,
+    potential: adopters.map(n => m - n),
+    labels: Array.from({ length: periods + 1 }, (_, i) => i)
+  };
+}
+
+function updateChart() {
+  const p = parseFloat(document.getElementById('p').value);
+  const q = parseFloat(document.getElementById('q').value);
+  const m = parseInt(document.getElementById('m').value);
+  const n = parseInt(document.getElementById('n').value);
+  animationSpeed = parseFloat(document.getElementById('speed').value);
+
+  document.getElementById('pValue').textContent = p.toFixed(3);
+  document.getElementById('qValue').textContent = q.toFixed(2);
+  document.getElementById('nValue').textContent = n;
+  document.getElementById('speedValue').textContent = `${animationSpeed.toFixed(1)}x`;
+
+  let results, label, color;
+
+  if (currentMethod === 'euler') {
+    results = calculateBassEuler(p, q, m, n);
+    label = 'Численное решение (Эйлер)';
+    color = '#e67e22';
+  } else if (currentMethod === 'heun') {
+    results = calculateBassHeun(p, q, m, n);
+    label = 'Численное решение (Хойн)';
+    color = '#8e44ad';
+  } else {
+    results = calculateBassExact(p, q, m, n);
+    label = 'Аналитическая модель';
+    color = '#27ae60';
+  }
+
+  simulation = new AgentSimulation(m);
+  let currentStep = 0;
+
+  if (bassChart) bassChart.destroy();
+  bassChart = new Chart(document.getElementById('bassChart'), {
+    type: 'line',
+    data: {
+      labels: results.labels,
+      datasets: [
+        {
+          label: label,
+          data: results.adopters,
+          borderColor: color,
+          fill: false,
+          tension: 0.3
+        },
+        {
+          label: 'Потенциальные потребители',
+          data: results.potential,
+          borderColor: '#3498db',
+          fill: false,
+          tension: 0.3,
+          borderDash: [5, 5]
+        },
+        {
+          label: 'Агентная модель',
+          data: Array(results.labels.length).fill(0),
+          borderColor: '#e74c3c',
+          fill: false,
+          tension: 0.3
+        }
+      ]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      scales: {
+        x: { title: { display: true, text: 'Период' } },
+        y: { title: { display: true, text: 'Количество' }, beginAtZero: true }
+      }
+    }
+  });
+
+  const animate = () => {
+    if (currentStep > n) return;
+    simulation.update(p, q, results.adopters[currentStep]);
+    bassChart.data.datasets[2].data[currentStep] = simulation.adoptedCountOverTime[currentStep];
+    bassChart.update();
+    currentStep++;
+    setTimeout(animate, 1000 / animationSpeed);
+  };
+
+  animate();
+}
+
+document.querySelectorAll('input').forEach(input => {
+  input.addEventListener('input', () => {
+    clearTimeout(window.debounce);
+    window.debounce = setTimeout(updateChart, 300);
+  });
+});
+
+updateChart();
+</script>
+</body>
+</html>
