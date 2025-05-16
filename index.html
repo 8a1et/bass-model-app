@@ -32,7 +32,7 @@
       display: inline-block;
       width: 240px;
     }
-    input[type="range"], input[type="number"] {
+    input[type="range"], input[type="number"], select {
       width: 200px;
     }
     .value-display {
@@ -128,6 +128,13 @@
     <button onclick="setMethod('euler')">Эйлера</button>
     <button onclick="setMethod('heun')">Хойна</button>
   </div>
+  <div class="control-group">
+    <label>Модель агентов:</label>
+    <select id="agentModel" onchange="updateChart()">
+      <option value="simple">Простая (фиксированные p, q)</option>
+      <option value="advanced">Продвинутая (индивидуальные p, q и порог)</option>
+    </select>
+  </div>
   <div style="margin: 10px 0; font-weight: bold;">
     Текущий метод: <span id="currentMethod">Аналитический</span>
   </div>
@@ -177,10 +184,12 @@ function draw() {
   });
 }
 
-class AgentSimulation {
-  constructor(agentCount) {
+class AgentSimulationSimple {
+  constructor(agentCount, p, q) {
     this.agentCount = agentCount;
     this.m = agentCount;
+    this.p = p;
+    this.q = q;
     this.adoptedCountOverTime = [];
     this.initAgents();
   }
@@ -198,6 +207,51 @@ class AgentSimulation {
     this.agents.forEach(agent => {
       if (!agent.adopted && Math.random() < adoptionProb) {
         agent.adopted = true;
+      }
+      if (agent.adopted) count++;
+    });
+    agents = this.agents;
+    this.adoptedCountOverTime.push(count);
+  }
+  get potentialCountOverTime() {
+    return this.adoptedCountOverTime.map(adopted => this.m - adopted);
+  }
+}
+
+class AgentSimulationAdvanced {
+  constructor(agentCount, pRange, qRange, thetaRange) {
+    this.agentCount = agentCount;
+    this.m = agentCount;
+    this.adoptedCountOverTime = [];
+    this.pRange = pRange;
+    this.qRange = qRange;
+    this.thetaRange = thetaRange;
+    this.initAgents();
+  }
+  initAgents() {
+    this.agents = Array(this.agentCount).fill().map(() => ({
+      x: Math.random() * canvasSize,
+      y: Math.random() * canvasSize,
+      adopted: false,
+      p: this.randomInRange(this.pRange.min, this.pRange.max),
+      q: this.randomInRange(this.qRange.min, this.qRange.max),
+      threshold: this.randomInRange(this.thetaRange.min, this.thetaRange.max)
+    }));
+    this.adoptedCountOverTime = [];
+  }
+  randomInRange(min, max) {
+    return Math.random() * (max - min) + min;
+  }
+  update(_, __, currentAdopters) {
+    const adoptionRatio = currentAdopters / this.m;
+    let count = 0;
+    this.agents.forEach(agent => {
+      if (!agent.adopted) {
+        // Вероятность принятия с учетом порога
+        const prob = Math.max(0, agent.p + agent.q * adoptionRatio - agent.threshold);
+        if (Math.random() < prob) {
+          agent.adopted = true;
+        }
       }
       if (agent.adopted) count++;
     });
@@ -266,6 +320,7 @@ function updateChart() {
   const m = parseInt(document.getElementById('m').value);
   const n = parseInt(document.getElementById('n').value);
   animationSpeed = parseFloat(document.getElementById('speed').value);
+  const agentModelType = document.getElementById('agentModel').value;
 
   document.getElementById('pValue').textContent = p.toFixed(3);
   document.getElementById('qValue').textContent = q.toFixed(2);
@@ -288,7 +343,16 @@ function updateChart() {
     color = '#27ae60';
   }
 
-  simulation = new AgentSimulation(m);
+  if(agentModelType === 'simple'){
+    simulation = new AgentSimulationSimple(m, p, q);
+  } else {
+    // Продвинутая модель с индивидуальными p, q и порогами
+    simulation = new AgentSimulationAdvanced(m,
+      {min: 0.001, max: 0.05},
+      {min: 0.1, max: 0.5},
+      {min: 0.0, max: 0.3});
+  }
+
   let currentStep = 0;
 
   if (bassChart) bassChart.destroy();
@@ -343,7 +407,7 @@ function updateChart() {
   animate();
 }
 
-document.querySelectorAll('input').forEach(input => {
+document.querySelectorAll('input, select').forEach(input => {
   input.addEventListener('input', () => {
     clearTimeout(window.debounce);
     window.debounce = setTimeout(updateChart, 300);
