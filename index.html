@@ -198,31 +198,32 @@ class AgentSimulationSimple {
     this.m = agentCount;
     this.p = p;
     this.q = q;
-    this.adoptedCountOverTime = [];
+    this.adoptedCountOverTime = [0];
     this.initAgents();
   }
+  
   initAgents() {
     this.agents = Array(this.agentCount).fill().map(() => ({
       x: Math.random() * canvasSize,
       y: Math.random() * canvasSize,
       adopted: false
     }));
-    this.adoptedCountOverTime = [];
   }
-  update(p, q, currentAdopters) {
-    const adoptionProb = p + q * (currentAdopters / this.m);
+
+  update() {
+    const currentAdopters = this.adoptedCountOverTime.at(-1);
+    const adoptionProb = this.p + this.q * (currentAdopters / this.m);
     let count = 0;
+    
     this.agents.forEach(agent => {
       if (!agent.adopted && Math.random() < adoptionProb) {
         agent.adopted = true;
       }
       if (agent.adopted) count++;
     });
+    
     agents = this.agents;
     this.adoptedCountOverTime.push(count);
-  }
-  get potentialCountOverTime() {
-    return this.adoptedCountOverTime.map(adopted => this.m - adopted);
   }
 }
 
@@ -230,12 +231,13 @@ class AgentSimulationAdvanced {
   constructor(agentCount, pRange, qRange, thetaRange) {
     this.agentCount = agentCount;
     this.m = agentCount;
-    this.adoptedCountOverTime = [];
+    this.adoptedCountOverTime = [0];
     this.pRange = pRange;
     this.qRange = qRange;
     this.thetaRange = thetaRange;
     this.initAgents();
   }
+  
   initAgents() {
     this.agents = Array(this.agentCount).fill().map(() => ({
       x: Math.random() * canvasSize,
@@ -245,29 +247,29 @@ class AgentSimulationAdvanced {
       q: this.randomInRange(this.qRange.min, this.qRange.max),
       threshold: this.randomInRange(this.thetaRange.min, this.thetaRange.max)
     }));
-    this.adoptedCountOverTime = [];
   }
+
   randomInRange(min, max) {
     return Math.random() * (max - min) + min;
   }
-  update(_, __, currentAdopters) {
+
+  update() {
+    const currentAdopters = this.adoptedCountOverTime.at(-1);
     const adoptionRatio = currentAdopters / this.m;
     let count = 0;
+    
     this.agents.forEach(agent => {
       if (!agent.adopted) {
-        // Вероятность принятия с учетом порога
-        const prob = Math.max(0, agent.p + agent.q * adoptionRatio - agent.threshold);
-        if (Math.random() < prob) {
+        const influenceProb = agent.p + agent.q * adoptionRatio;
+        if (influenceProb > agent.threshold && Math.random() < influenceProb) {
           agent.adopted = true;
         }
       }
       if (agent.adopted) count++;
     });
+    
     agents = this.agents;
     this.adoptedCountOverTime.push(count);
-  }
-  get potentialCountOverTime() {
-    return this.adoptedCountOverTime.map(adopted => this.m - adopted);
   }
 }
 
@@ -353,14 +355,14 @@ function updateChart() {
     color = '#27ae60';
   }
 
-  if (agentModelType === 'simple') {
-    simulation = new AgentSimulationSimple(m, p, q);
-  } else {
-    simulation = new AgentSimulationAdvanced(m,
-      { min: 0.001, max: 0.05 },
-      { min: 0.1, max: 0.5 },
-      { min: 0.0, max: 0.3 });
-  }
+ if (agentModelType === 'simple') {
+  simulation = new AgentSimulationSimple(m, p, q);
+} else {
+  simulation = new AgentSimulationAdvanced(m,
+    { min: Math.max(p*0.5, 0.001), max: p*1.5 },
+    { min: q*0.5, max: q*1.5 }, 
+    { min: 0.0, max: 0.1 }); 
+}
 
   let currentStep = 0;
 
@@ -411,20 +413,23 @@ function updateChart() {
     }
   });
 
-  const animate = () => {
-    if (currentStep > n) return;
-    const currentAdopters = simulation.adoptedCountOverTime.at(-1) || 0;
-    simulation.update(p, q, currentAdopters);
-    if (showAgents) {
-      const agentDataset = bassChart.data.datasets.find(d => d.label === 'Агентная модель');
-      if (agentDataset) {
-        agentDataset.data[currentStep] = simulation.adoptedCountOverTime[currentStep];
-      }
+const animate = () => {
+  if (currentStep >= n) return;
+  
+  simulation.update();
+  
+  if (showAgents) {
+    const agentDataset = bassChart.data.datasets.find(d => d.label === 'Агентная модель');
+    if (agentDataset) {
+      agentDataset.data[currentStep + 1] = simulation.adoptedCountOverTime[currentStep + 1];
     }
-    bassChart.update();
-    currentStep++;
-    setTimeout(animate, 1000 / animationSpeed);
-  };
+  }
+  
+  bassChart.update();
+  currentStep++;
+  setTimeout(animate, 1000 / (animationSpeed * 2));
+};
+
 
   animate();
 }
