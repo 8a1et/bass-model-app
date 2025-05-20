@@ -346,7 +346,6 @@ function updateChart() {
   if(agentModelType === 'simple'){
     simulation = new AgentSimulationSimple(m, p, q);
   } else {
-    // Продвинутая модель с индивидуальными p, q и порогами
     simulation = new AgentSimulationAdvanced(m,
       {min: 0.001, max: 0.05},
       {min: 0.1, max: 0.5},
