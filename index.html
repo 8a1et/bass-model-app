@@ -397,7 +397,8 @@ function updateChart() {
 
   const animate = () => {
     if (currentStep > n) return;
-    simulation.update(p, q, results.adopters[currentStep]);
+    const currentAdopters = simulation.adoptedCountOverTime.at(-1) || 0;
+simulation.update(p, q, currentAdopters);
     bassChart.data.datasets[2].data[currentStep] = simulation.adoptedCountOverTime[currentStep];
     bassChart.update();
     currentStep++;
