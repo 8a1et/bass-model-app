@@ -138,6 +138,14 @@
   <div style="margin: 10px 0; font-weight: bold;">
     Текущий метод: <span id="currentMethod">Аналитический</span>
   </div>
+  <div class="control-group">
+  <label>Отображение кривых:</label>
+  <input type="checkbox" id="showSystem" checked />
+  <label for="showSystem" style="width: auto;">Системная</label>
+  <input type="checkbox" id="showAgents" checked />
+  <label for="showAgents" style="width: auto;">Агентная</label>
+</div>
+
   <button class="restart-btn" onclick="updateChart()">Перезапустить анимацию</button>
 </div>
 
@@ -321,6 +329,8 @@ function updateChart() {
   const n = parseInt(document.getElementById('n').value);
   animationSpeed = parseFloat(document.getElementById('speed').value);
   const agentModelType = document.getElementById('agentModel').value;
+  const showSystem = document.getElementById('showSystem').checked;
+  const showAgents = document.getElementById('showAgents').checked;
 
   document.getElementById('pValue').textContent = p.toFixed(3);
   document.getElementById('qValue').textContent = q.toFixed(2);
@@ -343,46 +353,53 @@ function updateChart() {
     color = '#27ae60';
   }
 
-  if(agentModelType === 'simple'){
+  if (agentModelType === 'simple') {
     simulation = new AgentSimulationSimple(m, p, q);
   } else {
     simulation = new AgentSimulationAdvanced(m,
-      {min: 0.001, max: 0.05},
-      {min: 0.1, max: 0.5},
-      {min: 0.0, max: 0.3});
+      { min: 0.001, max: 0.05 },
+      { min: 0.1, max: 0.5 },
+      { min: 0.0, max: 0.3 });
   }
 
   let currentStep = 0;
+
+  const datasets = [];
+
+  if (showSystem) {
+    datasets.push({
+      label: label,
+      data: results.adopters,
+      borderColor: color,
+      fill: false,
+      tension: 0.3
+    });
+    datasets.push({
+      label: 'Потенциальные потребители',
+      data: results.potential,
+      borderColor: '#3498db',
+      fill: false,
+      tension: 0.3,
+      borderDash: [5, 5]
+    });
+  }
+
+  if (showAgents) {
+    datasets.push({
+      label: 'Агентная модель',
+      data: Array(results.labels.length).fill(0),
+      borderColor: '#e74c3c',
+      fill: false,
+      tension: 0.3
+    });
+  }
 
   if (bassChart) bassChart.destroy();
   bassChart = new Chart(document.getElementById('bassChart'), {
     type: 'line',
     data: {
       labels: results.labels,
-      datasets: [
-        {
-          label: label,
-          data: results.adopters,
-          borderColor: color,
-          fill: false,
-          tension: 0.3
-        },
-        {
-          label: 'Потенциальные потребители',
-          data: results.potential,
-          borderColor: '#3498db',
-          fill: false,
-          tension: 0.3,
-          borderDash: [5, 5]
-        },
-        {
-          label: 'Агентная модель',
-          data: Array(results.labels.length).fill(0),
-          borderColor: '#e74c3c',
-          fill: false,
-          tension: 0.3
-        }
-      ]
+      datasets: datasets
     },
     options: {
       animation: false,
@@ -397,8 +414,13 @@ function updateChart() {
   const animate = () => {
     if (currentStep > n) return;
     const currentAdopters = simulation.adoptedCountOverTime.at(-1) || 0;
-simulation.update(p, q, currentAdopters);
-    bassChart.data.datasets[2].data[currentStep] = simulation.adoptedCountOverTime[currentStep];
+    simulation.update(p, q, currentAdopters);
+    if (showAgents) {
+      const agentDataset = bassChart.data.datasets.find(d => d.label === 'Агентная модель');
+      if (agentDataset) {
+        agentDataset.data[currentStep] = simulation.adoptedCountOverTime[currentStep];
+      }
+    }
     bassChart.update();
     currentStep++;
     setTimeout(animate, 1000 / animationSpeed);
